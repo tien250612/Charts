@@ -579,7 +579,7 @@ open class PieChartRenderer: NSObject, DataRenderer
     {
         guard let data = dataProvider?.data else { return false }
         let count = CGFloat(dataProvider?.maxVisibleCount ?? 0) * viewPortHandler.scaleX
-        guard count < CGFloat.infinity, !count.isNaN else { return false }
+        guard count.isFinite == true else { return false }
         return data.entryCount < Int(count)
     }
 

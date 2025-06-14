@@ -22,6 +22,10 @@ import AppKit
 
 open class BarChartDataSet: BarLineScatterCandleBubbleChartDataSet, BarChartDataSetProtocol
 {
+
+    /// 更改上下Bar圖的界線
+    public var cutUpLine: Double = 0.0
+
     private func initialize()
     {
         self.highlightColor = NSUIColor.black

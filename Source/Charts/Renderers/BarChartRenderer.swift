@@ -94,6 +94,9 @@ open class BarChartRenderer: BarLineScatterCandleBubbleRenderer
         
         let isInverted = dataProvider.isInverted(axis: dataSet.axisDependency)
         let phaseY = CGFloat(animator.phaseY)
+        
+        let cutUpline = dataSet.cutUpLine
+        let cgCutUpline = CGFloat(cutUpline)
 
         for i in (0..<dataSet.entryCount).clamped(to: 0..<Int(ceil(Double(dataSet.entryCount) * animator.phaseX)))
         {
@@ -154,11 +157,11 @@ open class BarChartRenderer: BarLineScatterCandleBubbleRenderer
             else
             {
                 var top = isInverted
-                    ? (y <= 0.0 ? CGFloat(y) : 0)
-                    : (y >= 0.0 ? CGFloat(y) : 0)
+                    ? (y <= cutUpline ? CGFloat(y) : cgCutUpline)
+                    : (y >= cutUpline ? CGFloat(y) : cgCutUpline)
                 var bottom = isInverted
-                    ? (y >= 0.0 ? CGFloat(y) : 0)
-                    : (y <= 0.0 ? CGFloat(y) : 0)
+                    ? (y >= cutUpline ? CGFloat(y) : cgCutUpline)
+                    : (y <= cutUpline ? CGFloat(y) : cgCutUpline)
                 
                 /* When drawing each bar, the renderer actually draws each bar from 0 to the required value.
                  * This drawn bar is then clipped to the visible chart rect in BarLineChartViewBase's draw(rect:) using clipDataToContent.

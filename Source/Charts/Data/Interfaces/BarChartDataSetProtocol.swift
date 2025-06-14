@@ -52,4 +52,8 @@ public protocol BarChartDataSetProtocol: BarLineScatterCandleBubbleChartDataSetP
     
     /// array of corners to be rounded
     var roundedCornersInverted: UIRectCorner { get }
+    
+    /// 更改上下Bar圖的界線
+    var cutUpLine: Double { get set }
+
 }

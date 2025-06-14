@@ -387,6 +387,12 @@ open class YAxisRenderer: NSObject, AxisRenderer
         {
             interval = Swift.max(interval, axis.granularity)
         }
+        
+        guard interval.isNaN == false else {
+            axis.entries = []
+            axis.centeredEntries = []
+            return
+        }
 
         // Normalize interval
         let intervalMagnitude = pow(10.0, Double(Int(log10(interval)))).roundedToNextSignificant()

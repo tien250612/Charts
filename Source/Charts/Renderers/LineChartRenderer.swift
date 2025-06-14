@@ -75,6 +75,9 @@ open class LineChartRenderer: LineRadarRenderer
             
         case .horizontalBezier:
             drawHorizontalBezier(context: context, dataSet: dataSet)
+            
+        case .stockTrend:
+            drawStockTrend(context: context, dataSet: dataSet)
         }
         
         context.restoreGState()
@@ -905,5 +908,204 @@ open class LineChartRenderer: LineRadarRenderer
         modifier(element)
 
         return element
+    }
+}
+
+extension LineChartRenderer {
+    
+    /// draw 股票走勢圖
+    @objc open func drawStockTrend(context: CGContext, dataSet: LineChartDataSetProtocol) {
+        guard let dataProvider = dataProvider else { return }
+        
+        let trans = dataProvider.getTransformer(forAxis: dataSet.axisDependency)
+        
+        let valueToPixelMatrix = trans.valueToPixelMatrix
+        
+        let entryCount = dataSet.entryCount
+        let pointsPerEntryPair = 2
+        let stockTrendSet = dataSet as? StockTrendLineChartDataSet
+        let refPrice: CGFloat = stockTrendSet?.refPrice ?? 0
+        let valueUpColor: UIColor = stockTrendSet?.valueUpColor ?? .red
+        let valueDownColor: UIColor = stockTrendSet?.valueDownColor ?? .green
+        let refPriceColor: UIColor = stockTrendSet?.refPriceColor ?? .white
+        
+        let phaseY = animator.phaseY
+        
+        _xBounds.set(chart: dataProvider, dataSet: dataSet, animator: animator)
+        
+        // if drawing filled is enabled
+        if dataSet.isDrawFilledEnabled && entryCount > 0 {
+            drawStockTrendFill(context: context, dataSet: dataSet, trans: trans, bounds: _xBounds, upColor: valueUpColor, downColor: valueDownColor, refPrice: refPrice)
+        }
+        
+        context.saveGState()
+
+        if _lineSegments.count != pointsPerEntryPair {
+            // Allocate once in correct size
+            _lineSegments = [CGPoint](repeating: CGPoint(), count: pointsPerEntryPair)
+        }
+
+        for j in stride(from: _xBounds.min, through: _xBounds.range + _xBounds.min, by: 1)  {
+            var e: ChartDataEntry! = dataSet.entryForIndex(j)
+            
+            if e == nil { continue }
+            
+            _lineSegments[0].x = CGFloat(e.x)
+            _lineSegments[0].y = CGFloat(e.y * phaseY)
+            let valueStart = _lineSegments[0]
+            let valueEnd: CGPoint
+            if j < _xBounds.max {
+                e = dataSet.entryForIndex(j + 1)
+                if e == nil { break }
+                valueEnd = CGPoint(x: CGFloat(e.x), y: CGFloat(e.y * phaseY))
+                _lineSegments[1] = valueEnd
+            } else {
+                valueEnd = _lineSegments[0]
+                _lineSegments[1] = valueEnd
+            }
+
+            for i in 0..<_lineSegments.count {
+                _lineSegments[i] = _lineSegments[i].applying(valueToPixelMatrix)
+            }
+            
+            if !viewPortHandler.isInBoundsRight(_lineSegments[0].x)
+            {
+                break
+            }
+            
+            // Determine the start and end coordinates of the line, and make sure they differ.
+            let lastCoordinate = _lineSegments[1]
+            guard
+                let firstCoordinate = _lineSegments.first,
+                firstCoordinate != lastCoordinate else { continue }
+            
+            // make sure the lines don't do shitty things outside bounds
+            if !viewPortHandler.isInBoundsLeft(lastCoordinate.x) ||
+                !viewPortHandler.isInBoundsTop(max(firstCoordinate.y, lastCoordinate.y)) ||
+                !viewPortHandler.isInBoundsBottom(min(firstCoordinate.y, lastCoordinate.y))
+            {
+                continue
+            }
+            
+            if valueStart.y == refPrice && valueEnd.y == refPrice {
+                context.setStrokeColor(refPriceColor.cgColor)
+                context.strokeLineSegments(between: _lineSegments)
+            } else if valueStart.y >= refPrice && valueEnd.y >= refPrice {
+                context.setStrokeColor(valueUpColor.cgColor)
+                context.strokeLineSegments(between: _lineSegments)
+            } else if valueStart.y <= refPrice && valueEnd.y <= refPrice {
+                context.setStrokeColor(valueDownColor.cgColor)
+                context.strokeLineSegments(between: _lineSegments)
+            } else {
+                var color = valueStart.y > valueEnd.y ? valueUpColor : valueDownColor
+                let crossRefPriceX = (abs(valueStart.y - refPrice) / abs(valueStart.y - valueEnd.y)) * abs(valueEnd.x - valueStart.x) + valueStart.x
+                let crossRefPricePoint: CGPoint = .init(x: crossRefPriceX, y: refPrice)
+                _lineSegments[0] = valueStart
+                _lineSegments[1] = crossRefPricePoint
+                for i in 0..<_lineSegments.count {
+                    _lineSegments[i] = _lineSegments[i].applying(valueToPixelMatrix)
+                }
+                context.setStrokeColor(color.cgColor)
+                context.strokeLineSegments(between: _lineSegments)
+                
+                color = valueStart.y > valueEnd.y ? valueDownColor : valueUpColor
+                _lineSegments[0] = crossRefPricePoint
+                _lineSegments[1] = valueEnd
+                for i in 0..<_lineSegments.count {
+                    _lineSegments[i] = _lineSegments[i].applying(valueToPixelMatrix)
+                }
+                context.setStrokeColor(color.cgColor)
+                context.strokeLineSegments(between: _lineSegments)
+            }
+        }
+        
+        context.restoreGState()
+    }
+    
+    /// fill 股票走勢圖
+    private func drawStockTrendFill(context: CGContext, dataSet: LineChartDataSetProtocol, trans: Transformer, bounds: XBounds, upColor: UIColor, downColor: UIColor, refPrice: CGFloat) {
+        guard let dataSet = dataSet as? StockTrendLineChartDataSet else {return}
+        guard let filled = try? generateStockTrendFilledPath(
+                dataSet: dataSet,
+                bounds: bounds,
+                matrix: trans.valueToPixelMatrix,
+                refPrice: refPrice) else {return}
+        
+        if dataSet.fill != nil {
+            #if DEBUG
+            print("[CMChart] StockTrend 未支援 dataSet.fill")
+            #endif
+        }
+        if let valueUpFill = dataSet.valueUpFill {
+            drawFilledPath(context: context, path: filled.0, fill: valueUpFill, fillAlpha: dataSet.fillAlpha)
+        } else {
+            drawFilledPath(context: context, path: filled.0, fillColor: upColor, fillAlpha: dataSet.fillAlpha)
+        }
+        if let valueDownFill = dataSet.valueDownFill {
+            drawFilledPath(context: context, path: filled.1, fill: valueDownFill, fillAlpha: dataSet.fillAlpha)
+        } else {
+            drawFilledPath(context: context, path: filled.1, fillColor: downColor, fillAlpha: dataSet.fillAlpha)
+        }
+    }
+    
+    /// get 股票走勢圖填色Path
+    private func generateStockTrendFilledPath(dataSet: LineChartDataSetProtocol, bounds: XBounds, matrix: CGAffineTransform, refPrice: CGFloat) throws -> (CGPath, CGPath) {
+        let phaseY = animator.phaseY
+        let matrix = matrix
+        
+        let filledUp = CGMutablePath()
+        let filledDown = CGMutablePath()
+        
+        guard let e = dataSet.entryForIndex(bounds.min) else {
+            throw NSError(domain: "bounds.min entry nil", code: -1, userInfo: nil)
+        }
+        var valueStart: CGPoint = .init(x: CGFloat(e.x), y: CGFloat(e.y * phaseY))
+        filledUp.move(to: .init(x: valueStart.x, y: refPrice), transform: matrix)
+        filledDown.move(to: .init(x: valueStart.x, y: refPrice), transform: matrix)
+        
+        // create a new path
+        for x in stride(from: bounds.min, through: bounds.range + bounds.min, by: 1) {
+            guard let e = dataSet.entryForIndex(x) else { continue }
+            let valueEnd: CGPoint = .init(x: e.x, y: e.y)
+            defer {
+                valueStart = valueEnd
+            }
+            if valueEnd.y == refPrice {
+                filledUp.addLine(to: CGPoint(x: CGFloat(e.x), y: CGFloat(e.y * phaseY)), transform: matrix)
+                filledDown.addLine(to: CGPoint(x: CGFloat(e.x), y: CGFloat(e.y * phaseY)), transform: matrix)
+                continue
+            }
+            
+            if valueStart.y >= refPrice && valueEnd.y >= refPrice {
+                filledUp.addLine(to: CGPoint(x: CGFloat(e.x), y: CGFloat(e.y * phaseY)), transform: matrix)
+            } else if valueStart.y <= refPrice && valueEnd.y <= refPrice {
+                filledDown.addLine(to: CGPoint(x: CGFloat(e.x), y: CGFloat(e.y * phaseY)), transform: matrix)
+            } else if valueEnd.y > refPrice {// 上升焦點線
+                let crossRefPriceX = (abs(valueStart.y - refPrice) / abs(valueStart.y - valueEnd.y)) * abs(valueEnd.x - valueStart.x) + valueStart.x
+                let crossRefPricePoint: CGPoint = .init(x: crossRefPriceX, y: refPrice)
+                filledUp.addLine(to: crossRefPricePoint, transform: matrix)
+                filledUp.addLine(to: valueEnd, transform: matrix)
+                
+                filledDown.addLine(to: crossRefPricePoint, transform: matrix)
+            } else if valueEnd.y < refPrice {// 下降焦點線
+                let crossRefPriceX = (abs(valueStart.y - refPrice) / abs(valueStart.y - valueEnd.y)) * abs(valueEnd.x - valueStart.x) + valueStart.x
+                let crossRefPricePoint: CGPoint = .init(x: crossRefPriceX, y: refPrice)
+                filledUp.addLine(to: crossRefPricePoint, transform: matrix)
+                
+                filledDown.addLine(to: crossRefPricePoint, transform: matrix)
+                filledDown.addLine(to: valueEnd, transform: matrix)
+            }
+        }
+        
+        // close up
+        dataSet.entryForIndex(bounds.range + bounds.min)
+            .map {
+                filledUp.addLine(to: CGPoint(x: CGFloat($0.x), y: refPrice), transform: matrix)
+                filledDown.addLine(to: CGPoint(x: CGFloat($0.x), y: refPrice), transform: matrix)
+            }
+        filledUp.closeSubpath()
+        filledDown.closeSubpath()
+        
+        return (filledUp, filledDown)
     }
 }

@@ -632,7 +632,7 @@ open class HorizontalBarChartRenderer: BarChartRenderer
     {
         guard let data = dataProvider?.data else { return false }
         let count = CGFloat(dataProvider?.maxVisibleCount ?? 0) * viewPortHandler.scaleY
-        guard count < CGFloat.infinity, !count.isNaN else { return false }
+        guard count.isFinite == true else { return false }
         return data.entryCount < Int(count)
     }
     
