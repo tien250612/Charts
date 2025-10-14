@@ -70,4 +70,17 @@ public class CustomCombinedChartRenderer: CombinedChartRenderer {
         }
         _renderers = renderers
     }
+    
+    public override func drawHighlighted(context: CGContext, indices: [Highlight]) {
+        super.drawHighlighted(context: context, indices: indices)
+        drawHighlightCircles(context: context, indices: indices)
+    }
+    
+    /// 在全部 renderers 裡所有 Highlight 線上畫圓，要在畫完 Highlight 後執行，才能把圓覆蓋在線上
+    private func drawHighlightCircles(context: CGContext, indices: [Highlight]) {
+        for renderer in _renderers {
+            guard let circleRenderer = renderer as? HighlightCircleRenderer else { continue }
+            circleRenderer.drawHighlightCircle(context: context, indices: indices)
+        }
+    }
 }
