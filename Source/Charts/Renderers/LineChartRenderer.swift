@@ -806,7 +806,7 @@ open class LineChartRenderer: LineRadarRenderer
         context.restoreGState()
     }
 
-    func drawGradientLine(context: CGContext, dataSet: LineChartDataSetProtocol, spline: CGPath, matrix: CGAffineTransform)
+    open func drawGradientLine(context: CGContext, dataSet: LineChartDataSetProtocol, spline: CGPath, matrix: CGAffineTransform)
     {
         guard let gradientPositions = dataSet.gradientPositions else
         {
